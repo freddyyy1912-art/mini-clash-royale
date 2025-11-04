@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini‑Clash‑Royale</title>
+  <style>
+    /*
+     * Minimalistisches Styling für ein vereinfachtes Clash‑Royale‑Spiel.
+     * Wir nutzen ausschließlich CSS‑Eigenschaften, um eine klare Oberfläche
+     * ohne externe Assets zu erzeugen. Dadurch bleibt die Darstellung
+     * performant, was insbesondere bei der Simulation vieler Einheiten
+     * wichtig ist. Für weiterführende Designs könnten Sie später Bilder
+     * oder Animationen ergänzen.
+     */
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .game-container {
+      position: relative;
+      width: 100%;
+      max-width: 900px;
+      margin: 0 auto;
+      padding-top: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #hud {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 5px;
+      position: relative;
+      font-size: 14px;
+    }
+
+    /* Elixierleiste mit animiertem pinken Farbverlauf. Durch die
+     * Animation wirkt der Balken lebendig. Die Farben variieren
+     * zwischen hellem und dunklem Pink und laufen kontinuierlich
+     * von links nach rechts. */
+    #elixir-bar {
+      position: relative;
+      width: 200px;
+      height: 20px;
+      background: #ffb6e9;
+      border-radius: 10px;
+      /* Das Überlaufen auf sichtbar setzen, damit der Elixier‑Tropfen
+       * komplett angezeigt wird und die Zahl nicht abgeschnitten wird. */
+      overflow: visible;
+      margin-right: 10px;
+    }
+
+    /* Keyframe für den animierten Verlauf des Elixierbalkens */
+    @keyframes elixirGradient {
+      0% { background-position: 0 0; }
+      100% { background-position: 200px 0; }
+    }
+
+    #elixir-fill {
+      height: 100%;
+      width: 0%;
+      /* Animierter Farbverlauf in Pink, der sich horizontal bewegt */
+      background: linear-gradient(90deg, #ff67d9, #ff1493, #ff67d9);
+      background-size: 200% 100%;
+      animation: elixirGradient 4s linear infinite;
+      transition: width 0.2s;
+    }
+
+    /* Tropfen zur Anzeige der Elixierzahl */
+    #elixir-drop {
+      position: absolute;
+      /* Etwas höher platzieren, damit genügend Platz für die Zahl ist. */
+      top: -20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 32px;
+      height: 38px;
+      background: #e91e63;
+      border-radius: 50% 50% 70% 70%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 14px;
+      font-weight: bold;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+      pointer-events: none;
+    }
+
+    /* Timer für das Match (3 Minuten). */
+    #timer {
+      font-weight: bold;
+      margin-left: 10px;
+    }
+
+    #gameCanvas {
+      border: 1px solid #666;
+      background: #4CAF50;
+      border-radius: 6px;
+      display: block;
+    }
+
+    #cardHand {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      margin-top: 8px;
+    }
+
+    .card {
+      width: 70px;
+      height: 100px;
+      background: #fff;
+      border: 2px solid #666;
+      border-radius: 6px;
+      margin: 0 5px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      cursor: pointer;
+      position: relative;
+    }
+
+    .card.selected {
+      outline: 3px solid #f39c12;
+    }
+
+    .card .name {
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    .card .cost {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    #gameOverScreen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-size: 24px;
+      z-index: 10;
+    }
+
+    #gameOverScreen button {
+      margin-top: 10px;
+      padding: 8px 16px;
+      font-size: 16px;
+      background: #3498db;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #gameOverScreen button:hover {
+      background: #2980b9;
+    }
+  </style>
+</head>
+<body>
+  <div class="game-container">
+    <div id="hud">
+      <!-- Elixier‑Leiste mit Tropfenanzeige -->
+      <div id="elixir-bar">
+        <div id="elixir-fill"></div>
+        <!-- Der Tropfen zeigt den aktuellen Elixierstand an -->
+        <div id="elixir-drop">5</div>
+      </div>
+      <!-- Match‑Timer (Format MM:SS) -->
+      <span id="timer">03:00</span>
+    </div>
+    <!-- Spielfeld -->
+    <canvas id="gameCanvas" width="900" height="600"></canvas>
+    <!-- Kartenhand -->
+    <div id="cardHand"></div>
+    <!-- Spielende -->
+    <div id="gameOverScreen" class="hidden">
+      <div id="gameOverMessage"></div>
+      <button id="restartButton">Erneut spielen</button>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * Mini‑Clash‑Royale
+     *
+     * Dieses Skript implementiert ein vereinfachtes Echtzeit‑Strategie‑Spiel,
+     * inspiriert von Clash Royale. Zwei Spieler (hier Spieler und KI)
+     * besitzen je drei Türme: zwei Kronentürme auf den Lanes und einen
+     * Königsturm in der Mitte. Durch das Ausspielen von Karten werden
+     * Einheiten auf dem Spielfeld platziert, die dann automatisch
+     * vorrücken und gegnerische Einheiten und Türme angreifen. Das Match
+     * dauert 3 Minuten; wer anschließend die meisten Türme zerstört
+     * beziehungsweise den meisten Schaden verursacht hat, gewinnt.
+     *
+     * Quellen: Die Regeln zur Elixiergenerierung (ein Elixier alle 2,8 s,
+     * Beschränkung auf 10 Elixier, Erhöhung der Produktionsrate nach zwei
+     * Minuten) stammen aus der offiziellen Spielbeschreibung【251926049787687†L370-L387】. Die
+     * Struktur eines Echtzeit‑Strategiespiels mit Game‑Loop, State‑Manager
+     * und Entity‑System orientiert sich an einem Tutorial【838981435654340†L48-L75】. Die
+     * Grundregeln (drei Türme, nach Zerstörung eines Kronenturms darf der
+     * Königsturm angegriffen werden) entstammen der Fandom‑Beschreibung【228390254592224†L411-L426】.
+     */
+
+    // Canvas und Kontext
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // HUD Elemente
+    const elixirFill = document.getElementById('elixir-fill');
+    const elixirDrop = document.getElementById('elixir-drop');
+    const timerSpan = document.getElementById('timer');
+    const cardHandDiv = document.getElementById('cardHand');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const gameOverMessageDiv = document.getElementById('gameOverMessage');
+    const restartButton = document.getElementById('restartButton');
+
+    // Spielfeld‑Konstanten
+    const FIELD_WIDTH = canvas.width;
+    const FIELD_HEIGHT = canvas.height;
+    // Position des Flusses (Grenze zwischen den beiden Hälften)
+    const riverY = FIELD_HEIGHT / 2;
+    // Zwei Lanes – bestimmen die Zielwege der Einheiten
+    const lanes = [FIELD_WIDTH * 0.25, FIELD_WIDTH * 0.75];
+
+    // Match‑Timer (3 Minuten = 180 000 ms)
+    const MATCH_DURATION = 180000;
+    let startTime;
+
+    // Tower‑Klasse
+    class Tower {
+      constructor(x, y, lane, team) {
+        this.x = x;
+        this.y = y;
+        this.lane = lane;      // 0 oder 1 für Kronentürme, -1 für Königsturm
+        this.team = team;      // 'player' oder 'enemy'
+        this.maxHp = 1000;
+        this.hp = this.maxHp;
+        this.range = 120;
+        this.damage = 40;
+        this.attackInterval = 1000;
+        this.lastAttack = 0;
+      }
+      isAlive() {
+        return this.hp > 0;
+      }
+      update(delta, enemyUnits) {
+        if (!this.isAlive()) return;
+        const now = performance.now();
+        if (now - this.lastAttack < this.attackInterval) return;
+        let target = null;
+        let closestDist = Infinity;
+        for (const unit of enemyUnits) {
+          if (!unit.isAlive()) continue;
+          // Nur Einheiten in der gleichen Lane angreifen
+          if (unit.lane !== this.lane) continue;
+          const dist = Math.hypot(unit.x - this.x, unit.y - this.y);
+          if (dist < this.range && dist < closestDist) {
+            closestDist = dist;
+            target = unit;
+          }
+        }
+        if (target) {
+          target.hp -= this.damage;
+          this.lastAttack = now;
+        }
+      }
+      draw(ctx) {
+        if (!this.isAlive()) return;
+        // Grundfarbe abhängig vom Team
+        const baseColor = this.team === 'player' ? '#2980b9' : '#c0392b';
+        const topColor = this.team === 'player' ? '#5dade2' : '#e74c3c';
+        // Basisabmessungen
+        const baseWidth = 40;
+        const baseHeight = 60;
+        const topWidth = 28;
+        const topHeight = 20;
+        // Basiskoordinaten (rechteck um die Mittelpunktkoordinate)
+        const baseX = this.x - baseWidth / 2;
+        const baseY = this.y - baseHeight / 2;
+        // Turmfuß
+        ctx.fillStyle = baseColor;
+        ctx.fillRect(baseX, baseY, baseWidth, baseHeight);
+        // Turmspitze
+        const topX = this.x - topWidth / 2;
+        const topY = baseY - topHeight + 5;
+        ctx.fillStyle = topColor;
+        ctx.fillRect(topX, topY, topWidth, topHeight);
+        // Krone für den Königsturm
+        if (this.lane === -1) {
+          ctx.fillStyle = '#f1c40f'; // Goldfarbe
+          const crownBaseY = topY - 6;
+          ctx.beginPath();
+          // Zeichne drei Zacken der Krone
+          ctx.moveTo(this.x - 12, crownBaseY);
+          ctx.lineTo(this.x - 8, crownBaseY - 12);
+          ctx.lineTo(this.x - 4, crownBaseY);
+          ctx.lineTo(this.x, crownBaseY - 12);
+          ctx.lineTo(this.x + 4, crownBaseY);
+          ctx.lineTo(this.x + 8, crownBaseY - 12);
+          ctx.lineTo(this.x + 12, crownBaseY);
+          ctx.closePath();
+          ctx.fill();
+        }
+        // Lebensbalken oberhalb der Turmspitze
+        const barY = baseY - topHeight - 12;
+        ctx.fillStyle = 'red';
+        ctx.fillRect(this.x - 25, barY, 50, 4);
+        ctx.fillStyle = 'lime';
+        const hpRatio = this.hp / this.maxHp;
+        ctx.fillRect(this.x - 25, barY, 50 * hpRatio, 4);
+      }
+    }
+
+    // Einheiten‑Klasse
+    class Unit {
+      constructor(options) {
+        this.name = options.name;
+        // Aktuelle Position
+        this.x = options.x;
+        this.y = options.y;
+        // Lane (0 links, 1 rechts)
+        this.lane = options.lane;
+        this.team = options.team;
+        this.color = options.color;
+        this.radius = options.radius;
+        this.maxHp = options.hp;
+        this.hp = options.hp;
+        this.speed = options.speed;
+        this.damage = options.damage;
+        this.attackRange = options.range;
+        this.attackInterval = options.attackInterval;
+        this.lastAttack = 0;
+        this.targetBuildingsFirst = options.targetBuildingsFirst || false;
+        // Ziel‑X‑Position entspricht der festen Lane‑Koordinate. Die Einheit
+        // bewegt sich horizontal dorthin, damit sie den Turm in ihrer Lane
+        // nicht verfehlt.
+        this.targetX = lanes[this.lane];
+
+        // Versuche das passende Bild für diese Einheit zuzuweisen. Wenn das
+        // Bild bereits vorgeladen wurde, kann es im draw‑Aufruf verwendet
+        // werden, andernfalls fällt die Darstellung auf einen farbigen
+        // Kreis zurück.
+        this.image = unitImages[this.name];
+      }
+      isAlive() {
+        return this.hp > 0;
+      }
+      // Ermittelt das nächste Ziel. Zielt je nach Einstellung zunächst auf Einheiten
+      // oder Gebäude. Wenn auf Gebäude gezielt wird, wird der Königsturm erst
+      // angreifbar, wenn mindestens ein Kronenturm gefallen ist【228390254592224†L411-L426】.
+      findTarget(enemyUnits, enemyTowers) {
+        // Kandidatenliste
+        let candidates = [];
+        if (this.targetBuildingsFirst) {
+          // Nur Türme betrachten, aber König erst zulassen, wenn Kronen weg sind
+          candidates = this.getAttackableTowers(enemyTowers);
+        } else {
+          // Zuerst Einheiten
+          candidates = enemyUnits.filter(u => u.isAlive() && u.lane === this.lane);
+          if (candidates.length === 0) {
+            // Wenn keine Einheiten vorhanden, greife Gebäude an
+            candidates = this.getAttackableTowers(enemyTowers);
+          }
+        }
+        let closest = null;
+        let closestDist = Infinity;
+        for (const candidate of candidates) {
+          const dist = Math.hypot(candidate.x - this.x, candidate.y - this.y);
+          if (dist < closestDist) {
+            closestDist = dist;
+            closest = candidate;
+          }
+        }
+        return { target: closest, dist: closestDist };
+      }
+      // Hilfsfunktion zur Auswahl der angreifbaren Türme
+      getAttackableTowers(enemyTowers) {
+        // Zähle lebende Kronentürme (lane !== -1)
+        const aliveCrowns = enemyTowers.filter(t => t.isAlive() && t.lane !== -1).length;
+        if (aliveCrowns === 2) {
+          // Beide Kronentürme leben → König ist geschützt. Greife nur den Turm
+          // in der eigenen Lane an.
+          return enemyTowers.filter(t => t.isAlive() && t.lane === this.lane);
+        } else {
+          // Mindestens ein Kronenturm wurde zerstört → König darf ebenfalls
+          // angegriffen werden. Greife alle lebenden Türme an.
+          return enemyTowers.filter(t => t.isAlive());
+        }
+      }
+      update(delta, enemyUnits, enemyTowers) {
+        if (!this.isAlive()) return;
+        const { target, dist } = this.findTarget(enemyUnits, enemyTowers);
+        if (target && dist <= this.attackRange) {
+          const now = performance.now();
+          if (now - this.lastAttack >= this.attackInterval) {
+            target.hp -= this.damage;
+            this.lastAttack = now;
+          }
+        } else {
+          // Einheit bewegt sich zum Ziel: vertikal Richtung Gegner und
+          // horizontal Richtung ihrer Lane. So wird ein Bremsen und
+          // korrigieren des X‑Werts ermöglicht.
+          const directionY = this.team === 'player' ? -1 : 1;
+          this.y += this.speed * directionY * (delta / 1000);
+          // horizontale Annäherung an die Lane
+          const dx = this.targetX - this.x;
+          // Gebe der Horizontalbewegung einen Bruchteil der Geschwindigkeit
+          this.x += Math.sign(dx) * this.speed * 0.5 * (delta / 1000);
+          // Wenn die Einheit die Ziel‑X‑Koordinate überschreitet, setze sie exakt
+          if ((Math.sign(dx) > 0 && this.x > this.targetX) || (Math.sign(dx) < 0 && this.x < this.targetX)) {
+            this.x = this.targetX;
+          }
+          // Spielfeldgrenzen
+          if (this.team === 'player' && this.y < 0) this.y = 0;
+          if (this.team === 'enemy' && this.y > FIELD_HEIGHT) this.y = FIELD_HEIGHT;
+        }
+      }
+      draw(ctx) {
+        if (!this.isAlive()) return;
+        if (this.image && this.image.complete) {
+          // Zeichne das Bild zentriert um (x,y) mit Größe entsprechend dem
+          // Durchmesser des ursprünglichen Kreises. Die Höhe und Breite
+          // werden verdoppelt, um das Verhältnis der Radius‑Eigenschaft
+          // beizubehalten.
+          const size = this.radius * 2;
+          ctx.drawImage(this.image, this.x - this.radius, this.y - this.radius, size, size);
+        } else {
+          // Fallback: einfacher farbiger Kreis
+          ctx.fillStyle = this.color;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Lebensbalken
+        ctx.fillStyle = 'red';
+        ctx.fillRect(this.x - this.radius, this.y - this.radius - 6, this.radius * 2, 4);
+        ctx.fillStyle = 'lime';
+        const hpRatio = this.hp / this.maxHp;
+        ctx.fillRect(this.x - this.radius, this.y - this.radius - 6, this.radius * 2 * hpRatio, 4);
+        // Name oberhalb anzeigen
+        ctx.fillStyle = '#000';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.name, this.x, this.y - this.radius - 10);
+      }
+    }
+
+    // Karten‑Definitionen (vier unterschiedliche Einheiten). Die
+    // createUnit‑Funktion akzeptiert eine X‑Koordinate, damit der Spieler
+    // Einheiten überall bis zum Fluss platzieren kann. Die Lane wird
+    // automatisch aus der Position abgeleitet (links/rechts der Spielfeldmitte).
+    const cardDefinitions = [
+      {
+        name: 'Ritter',
+        cost: 3,
+        color: '#3498db',
+        createUnit: (lane, team, spawnX, spawnY) => {
+          return new Unit({
+            name: 'Ritter',
+            x: spawnX,
+            y: spawnY,
+            lane,
+            team,
+            color: '#3498db',
+            radius: 12,
+            hp: 300,
+            speed: 40,
+            damage: 50,
+            range: 20,
+            attackInterval: 1000,
+            targetBuildingsFirst: false,
+          });
+        },
+      },
+      {
+        name: 'Bogenschütze',
+        cost: 3,
+        color: '#e67e22',
+        createUnit: (lane, team, spawnX, spawnY) => {
+          return new Unit({
+            name: 'Bogenschütze',
+            x: spawnX,
+            y: spawnY,
+            lane,
+            team,
+            color: '#e67e22',
+            radius: 10,
+            hp: 200,
+            speed: 35,
+            damage: 35,
+            range: 80,
+            attackInterval: 900,
+            targetBuildingsFirst: false,
+          });
+        },
+      },
+      {
+        name: 'Riese',
+        cost: 5,
+        color: '#95a5a6',
+        createUnit: (lane, team, spawnX, spawnY) => {
+          return new Unit({
+            name: 'Riese',
+            x: spawnX,
+            y: spawnY,
+            lane,
+            team,
+            color: '#95a5a6',
+            radius: 16,
+            hp: 700,
+            speed: 25,
+            damage: 80,
+            range: 25,
+            attackInterval: 1200,
+            targetBuildingsFirst: true,
+          });
+        },
+      },
+      {
+        name: 'Speerwerfer',
+        cost: 2,
+        color: '#8e44ad',
+        createUnit: (lane, team, spawnX, spawnY) => {
+          return new Unit({
+            name: 'Speerwerfer',
+            x: spawnX,
+            y: spawnY,
+            lane,
+            team,
+            color: '#8e44ad',
+            radius: 8,
+            hp: 150,
+            speed: 50,
+            damage: 25,
+            range: 100,
+            attackInterval: 800,
+            targetBuildingsFirst: false,
+          });
+        },
+      },
+    ];
+
+    // Deck und Hand – wird als rotierendes Deck organisiert, sodass Karten
+    // nicht ausgehen. Nach dem Ausspielen wird die Karte wieder ans Ende
+    // des Decks gehängt. Die Hand enthält stets vier Karten.
+    let playerDeck = [];
+    let cardHand = [];
+    let selectedCard = null;
+
+    // Zuordnung der Kartennamen zu Bildpfaden. Diese Bilder werden
+    // genutzt, um die Karten in der Hand sowie die Einheiten auf dem
+    // Spielfeld visuell darzustellen. Bitte stelle sicher, dass die
+    // entsprechenden Bilder im Unterordner „img“ vorhanden sind.
+    const cardImagePaths = {
+      'Ritter': 'img/knight.png',
+      'Bogenschütze': 'img/archer.png',
+      'Riese': 'img/giant.png',
+      'Speerwerfer': 'img/spear.png'
+    };
+
+    // Bilder der Einheiten werden nach dem Preload hier abgelegt. Die
+    // Schlüssel entsprechen den Namen der Karten. Über diese Bilder
+    // greift der Unit‑Konstruktor zu, um bei der Darstellung der Einheit
+    // statt einer einfachen Kreisform das Bild zu zeichnen.
+    const unitImages = {};
+
+    function preloadImages() {
+      const promises = [];
+      for (const name in cardImagePaths) {
+        const img = new Image();
+        img.src = cardImagePaths[name];
+        unitImages[name] = img;
+        // Optional: warte, bis das Bild geladen ist
+        promises.push(new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve;
+        }));
+      }
+      return Promise.all(promises);
+    }
+
+    function initDeck() {
+      playerDeck = [];
+      // Erzeuge zwei Kopien jedes Kartentyps, um acht Karten zu erhalten
+      for (let i = 0; i < 2; i++) {
+        for (const def of cardDefinitions) {
+          playerDeck.push(def);
+        }
+      }
+      // Mische das Deck zufällig
+      playerDeck = playerDeck.sort(() => Math.random() - 0.5);
+    }
+
+    // Erstellt ein eigenes Deck für den Gegner. Das Deck enthält ebenfalls
+    // zwei Kopien jeder Karte und wird zufällig gemischt. Die AI greift
+    // jeweils in der Reihenfolge zu, rotiert das Deck aber immer weiter,
+    // um ein gleichmäßiges Kartenspektrum zu gewährleisten.
+    let enemyDeck = [];
+    function initEnemyDeck() {
+      enemyDeck = [];
+      for (let i = 0; i < 2; i++) {
+        for (const def of cardDefinitions) {
+          enemyDeck.push(def);
+        }
+      }
+      enemyDeck = enemyDeck.sort(() => Math.random() - 0.5);
+    }
+
+    function refillHand() {
+      // Fülle die Hand auf vier Karten auf, indem du aus dem Deck nimmst
+      while (cardHand.length < 4) {
+        const card = playerDeck.shift();
+        playerDeck.push(card); // zurück ans Ende – macht das Deck zirkulär
+        cardHand.push(card);
+      }
+      renderHand();
+    }
+
+    function renderHand() {
+      cardHandDiv.innerHTML = '';
+      cardHand.forEach((card, idx) => {
+        const cardDiv = document.createElement('div');
+        cardDiv.className = 'card';
+        if (selectedCard === idx) {
+          cardDiv.classList.add('selected');
+        }
+        // Bild der Einheit
+        const imgEl = document.createElement('img');
+        imgEl.src = cardImagePaths[card.name];
+        imgEl.alt = card.name;
+        imgEl.style.width = '40px';
+        imgEl.style.height = '40px';
+        imgEl.style.marginTop = '4px';
+        cardDiv.appendChild(imgEl);
+        // Name der Einheit
+        const nameEl = document.createElement('div');
+        nameEl.className = 'name';
+        nameEl.textContent = card.name;
+        // Kosten
+        const costEl = document.createElement('div');
+        costEl.className = 'cost';
+        costEl.textContent = card.cost + '⚡';
+        cardDiv.appendChild(nameEl);
+        cardDiv.appendChild(costEl);
+        cardDiv.addEventListener('click', () => {
+          if (selectedCard === idx) {
+            selectedCard = null;
+          } else {
+            selectedCard = idx;
+          }
+          renderHand();
+        });
+        cardHandDiv.appendChild(cardDiv);
+      });
+    }
+
+    // Spielstatus
+    let playerUnits = [];
+    let enemyUnits = [];
+    let playerTowers = [];
+    let enemyTowers = [];
+    let playerElixir = 5;
+    let maxElixir = 10;
+    // 1,5 s pro Elixier – schneller als das Original für kürzere Spiele
+    let elixirGenerationInterval = 1500;
+    // Separater Zeitstempel für die Elixiergeneration von Spieler und Gegner.
+    let lastPlayerElixirGen;
+    let lastEnemyElixirGen;
+    let gameOver = false;
+
+    // Gegner‑KI Parameter
+    let enemyElixir = 5;
+    let enemyLastSpawn;
+    let enemySpawnInterval = 3000;
+
+    // Türme initialisieren
+    function initTowers() {
+      playerTowers = [];
+      enemyTowers = [];
+      // Kronentürme links/rechts
+      playerTowers.push(new Tower(lanes[0], FIELD_HEIGHT - 80, 0, 'player'));
+      playerTowers.push(new Tower(lanes[1], FIELD_HEIGHT - 80, 1, 'player'));
+      // Königsturm mittig
+      playerTowers.push(new Tower(FIELD_WIDTH / 2, FIELD_HEIGHT - 120, -1, 'player'));
+      enemyTowers.push(new Tower(lanes[0], 80, 0, 'enemy'));
+      enemyTowers.push(new Tower(lanes[1], 80, 1, 'enemy'));
+      enemyTowers.push(new Tower(FIELD_WIDTH / 2, 120, -1, 'enemy'));
+    }
+
+    // Spiel zurücksetzen
+    function resetGame() {
+      selectedCard = null;
+      gameOver = false;
+      initDeck();
+      initEnemyDeck();
+      cardHand = [];
+      refillHand();
+      playerUnits = [];
+      enemyUnits = [];
+      playerElixir = 5;
+      enemyElixir = 5;
+      lastPlayerElixirGen = performance.now();
+      lastEnemyElixirGen = performance.now();
+      enemyLastSpawn = performance.now();
+      initTowers();
+      startTime = performance.now();
+      // Letzten Frame‑Zeitpunkt zurücksetzen, um große Sprünge zu vermeiden
+      lastTime = performance.now();
+      gameOverScreen.classList.add('hidden');
+      gameLoop();
+    }
+
+    // Elixier aktualisieren
+    function updateElixir() {
+      const now = performance.now();
+      // Spieler‑Elixier generieren
+      if (now - lastPlayerElixirGen >= elixirGenerationInterval) {
+        lastPlayerElixirGen = now;
+        if (playerElixir < maxElixir) {
+          playerElixir++;
+          if (playerElixir > maxElixir) playerElixir = maxElixir;
+        }
+      }
+      // Anzeige aktualisieren
+      elixirDrop.textContent = playerElixir;
+      elixirFill.style.width = ((playerElixir / maxElixir) * 100) + '%';
+    }
+
+    // Gegner‑KI spawnt regelmäßig Einheiten
+    function updateEnemyAI() {
+      const now = performance.now();
+      // Generiere Elixier für Gegner
+      if (now - lastEnemyElixirGen >= elixirGenerationInterval) {
+        lastEnemyElixirGen = now;
+        if (enemyElixir < maxElixir) enemyElixir++;
+      }
+      // Spawne Einheit, wenn das Spawnintervall erreicht wurde. Die KI
+      // verwendet ein rotierendes Deck, um ein ausgeglichenes Kartenspektrum
+      // zu gewährleisten. Wenn die aktuelle Karte zu teuer ist, wird sie
+      // übersprungen und das Deck rotiert weiter.
+      if (now - enemyLastSpawn >= enemySpawnInterval) {
+        enemyLastSpawn = now;
+        // Versuche eine Karte zu spielen, indem du maximal die Länge des Decks
+        // iterierst. Dadurch wird sichergestellt, dass wir nicht in eine
+        // Endlosschleife geraten, wenn keine Karte erschwinglich ist.
+        for (let i = 0; i < enemyDeck.length; i++) {
+          const card = enemyDeck.shift();
+          enemyDeck.push(card); // rotiere das Deck
+          if (card.cost <= enemyElixir) {
+            const lane = Math.random() < 0.5 ? 0 : 1;
+            const spawnX = lanes[lane];
+            const spawnY = 60;
+            enemyUnits.push(card.createUnit(lane, 'enemy', spawnX, spawnY));
+            enemyElixir -= card.cost;
+            break;
+          }
+        }
+      }
+    }
+
+    // Mausklick‑Event: Karten ausspielen
+    canvas.addEventListener('click', (e) => {
+      if (gameOver) return;
+      if (selectedCard === null) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      // Spieler darf nur auf eigener Hälfte (unterhalb des Flusses) platzieren
+      if (y < riverY + 10) {
+        return;
+      }
+      // Berechne Lane anhand der X‑Position (linke oder rechte Hälfte)
+      const lane = x < FIELD_WIDTH / 2 ? 0 : 1;
+      const card = cardHand[selectedCard];
+      // Prüfe Elixier
+      if (playerElixir < card.cost) {
+        return;
+      }
+      // Einheit erzeugen: übergib X‑ und Y‑Position
+      playerUnits.push(card.createUnit(lane, 'player', x, y));
+      playerElixir -= card.cost;
+      // Karte aus der Hand entfernen und neu auffüllen
+      cardHand.splice(selectedCard, 1);
+      selectedCard = null;
+      refillHand();
+    });
+
+    // Restart‑Knopf
+    restartButton.addEventListener('click', () => {
+      resetGame();
+    });
+
+    // Spielfeld zeichnen (Hintergrund, Fluss, Lanes)
+    function drawField() {
+      // Zeichne Wiese mit sanftem Farbverlauf
+      const grassGrad = ctx.createLinearGradient(0, 0, 0, FIELD_HEIGHT);
+      grassGrad.addColorStop(0, '#7BC47F');
+      grassGrad.addColorStop(1, '#43A047');
+      ctx.fillStyle = grassGrad;
+      ctx.fillRect(0, 0, FIELD_WIDTH, FIELD_HEIGHT);
+      // Fluss als blauer Streifen
+      ctx.fillStyle = '#5DADE2';
+      ctx.fillRect(0, riverY - 12, FIELD_WIDTH, 24);
+      // Brücken über den Fluss pro Lane
+      const bridgeWidth = 80;
+      const bridgeHeight = 24;
+      ctx.fillStyle = '#B5651D'; // braun
+      lanes.forEach(lx => {
+        const bx = lx - bridgeWidth / 2;
+        const by = riverY - bridgeHeight / 2;
+        ctx.fillRect(bx, by, bridgeWidth, bridgeHeight);
+      });
+      // Strichlinien zur Verdeutlichung der Lanes auf beiden Seiten des Flusses
+      ctx.strokeStyle = '#2E8B57';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 8]);
+      ctx.beginPath();
+      ctx.moveTo(FIELD_WIDTH / 2, 0);
+      ctx.lineTo(FIELD_WIDTH / 2, FIELD_HEIGHT);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Anzeige des Timers aktualisieren
+    function updateTimer() {
+      const now = performance.now();
+      const elapsed = now - startTime;
+      const remaining = Math.max(0, MATCH_DURATION - elapsed);
+      const seconds = Math.floor(remaining / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      timerSpan.textContent = `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      // Wenn die Zeit abgelaufen ist und das Spiel noch läuft, Gewinner bestimmen
+      if (remaining <= 0 && !gameOver) {
+        determineWinner();
+      }
+    }
+
+    // Prüft Sieg durch Zerstörung des Königsturms
+    function checkWin() {
+      const playerKing = playerTowers[2];
+      const enemyKing = enemyTowers[2];
+      if (!enemyKing.isAlive()) {
+        gameOver = true;
+        gameOverMessageDiv.textContent = 'Sieg! Du hast den Gegner besiegt!';
+        gameOverScreen.classList.remove('hidden');
+      } else if (!playerKing.isAlive()) {
+        gameOver = true;
+        gameOverMessageDiv.textContent = 'Niederlage! Dein Königsturm wurde zerstört.';
+        gameOverScreen.classList.remove('hidden');
+      }
+    }
+
+    // Gewinner bei Zeitablauf bestimmen
+    function determineWinner() {
+      // Errechne zerstörte Türme und Schaden
+      let playerDestroyed = 0;
+      let enemyDestroyed = 0;
+      let playerDamage = 0;
+      let enemyDamage = 0;
+      // Türme des Gegners – wie viele hat der Spieler zerstört und wie viel Schaden verursacht?
+      for (const tower of enemyTowers) {
+        if (tower.hp <= 0) {
+          playerDestroyed++;
+          playerDamage += tower.maxHp; // Komplett zerstört
+        } else {
+          playerDamage += (tower.maxHp - tower.hp);
+        }
+      }
+      // Türme des Spielers
+      for (const tower of playerTowers) {
+        if (tower.hp <= 0) {
+          enemyDestroyed++;
+          enemyDamage += tower.maxHp;
+        } else {
+          enemyDamage += (tower.maxHp - tower.hp);
+        }
+      }
+      gameOver = true;
+      if (playerDestroyed > enemyDestroyed) {
+        gameOverMessageDiv.textContent = 'Zeit abgelaufen: Sieg nach Türmen!';
+      } else if (enemyDestroyed > playerDestroyed) {
+        gameOverMessageDiv.textContent = 'Zeit abgelaufen: Niederlage nach Türmen.';
+      } else {
+        // Gleichstand bei Türmen → Schaden vergleichen
+        if (playerDamage > enemyDamage) {
+          gameOverMessageDiv.textContent = 'Zeit abgelaufen: Sieg nach Schaden!';
+        } else if (enemyDamage > playerDamage) {
+          gameOverMessageDiv.textContent = 'Zeit abgelaufen: Niederlage nach Schaden.';
+        } else {
+          gameOverMessageDiv.textContent = 'Zeit abgelaufen: Unentschieden.';
+        }
+      }
+      gameOverScreen.classList.remove('hidden');
+    }
+
+    let lastTime;
+    function gameLoop() {
+      if (gameOver) return;
+      const now = performance.now();
+      const delta = lastTime ? now - lastTime : 0;
+      lastTime = now;
+      updateElixir();
+      updateEnemyAI();
+      // Türme aktualisieren
+      playerTowers.forEach(tower => tower.update(delta, enemyUnits));
+      enemyTowers.forEach(tower => tower.update(delta, playerUnits));
+      // Einheiten aktualisieren
+      playerUnits.forEach(unit => unit.update(delta, enemyUnits, enemyTowers));
+      enemyUnits.forEach(unit => unit.update(delta, playerUnits, playerTowers));
+      // Tote Einheiten entfernen
+      playerUnits = playerUnits.filter(u => u.isAlive());
+      enemyUnits = enemyUnits.filter(u => u.isAlive());
+      // Zeichnen
+      drawField();
+      playerTowers.forEach(tower => tower.draw(ctx));
+      enemyTowers.forEach(tower => tower.draw(ctx));
+      playerUnits.forEach(unit => unit.draw(ctx));
+      enemyUnits.forEach(unit => unit.draw(ctx));
+      // Timer aktualisieren
+      updateTimer();
+      // Sieg‑Check
+      checkWin();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Bilder vorladen und danach das Spiel initialisieren. So wird
+    // sichergestellt, dass die Einheitenbilder bereits verfügbar sind,
+    // wenn sie gezeichnet werden. Sobald die Bilder geladen sind,
+    // werden Decks und Türme initialisiert und der Game‑Loop gestartet.
+    preloadImages().then(() => {
+      resetGame();
+    });
+  </script>
+</body>
+</html>
